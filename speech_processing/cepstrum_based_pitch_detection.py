@@ -8,7 +8,10 @@ import librosa
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-from utils.audio_helper import define_energy, find_voice_index
+from utils.audio_helper import find_voice_index
+
+root_path = 'test_signals/'
+output_path = 'speech_processing/analysis/data/cepstrum_based_pitch_detection/'
 
 def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, threshold: int = 0.01) -> list:
     index_voices = find_voice_index(signal, frame_size, frame_step, threshold)
@@ -77,19 +80,27 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments):
             f0 = fs / cepstrum_peak_index if cepstrum_peak_index != 0 else 0
             f0s.append(f0)
 
+    # 7. Áp dụng lọc trung vị (Median Filter) để làm mượt các giá trị F0
+    f0s = medfilt(f0s, kernel_size=5)  # Kích thước kernel có thể tùy chỉnh
+
     # Gán giá trị F0 là 0 cho các frame không có giọng nói
     num_frames = int(np.ceil(float(len(signal) - frame_size) / frame_step)) + 1
     f0s_full = np.zeros(num_frames)  # Khởi tạo mảng F0 với giá trị 0
-    for idx, (start, end) in enumerate(segments):
+    
+    # Sử dụng chỉ số để gán giá trị F0
+    idx = 0  # Khởi tạo chỉ số cho mảng F0
+    for start, end in segments:
         for i in range(start * frame_step // frame_step, (end * frame_step // frame_step) + 1):
-            f0s_full[i] = f0s.pop(0)  # Gán giá trị F0 vào các frame có giọng nói
+            if idx < len(f0s):
+                f0s_full[i] = f0s[idx]  # Gán giá trị F0 vào các frame có giọng nói
+                idx += 1  # Tăng chỉ số sau mỗi lần gán
     
     return f0s_full
 
-# Ví dụ sử dụng
 if __name__ == "__main__":
     # Đọc tín hiệu từ file .wav
-    file_path = 'test_signals/MDU_RE_005.wav'
+    file_name = 'studio_female.wav'
+    file_path = os.path.join(root_path, file_name)
     threshold = 0.005
     signal, fs = librosa.load(file_path, sr=None)
     
@@ -99,18 +110,23 @@ if __name__ == "__main__":
     frame_length = len(signal) // frame_step + 1
 
     print(f"Tần số lấy mẫu: {fs} Hz")
+    print(f"Số mẫu của tín hiệu: {len(signal)}")
     print(f"Số lượng khung: {frame_length} frames")
+    print(f"Kích thước frame: {frame_size} mẫu")
+    print(f"Bước nhảy giữa các frame: {frame_step} mẫu")
 
     # Tách các đoạn giọng nói
     segments = split_voice_segments(signal, frame_size, frame_step, threshold)
 
-    for i, (start, end) in enumerate(segments):
-        print(f"Đoạn giọng nói {i+1}: {start * frame_step} - {end * frame_step}")
-
-    print(f"Số đoạn giọng nói: {len(segments)}")
-
     f0s = calculate_f0(signal, fs, frame_size, frame_step, segments)
-    
+
+    # Lưu F0 vào file
+    f0s_path = os.path.join(output_path, file_name.split(".")[0] + '.txt')
+    open(f0s_path, 'w').close()
+    for i, f0 in enumerate(f0s):
+        with open(f0s_path, 'a') as f:
+            f.write(f"{round(f0, 2)}\n")
+
     # Vẽ biểu đồ F0 theo thời gian (từng frame)
     plt.figure( figsize=(14, 7))
     plt.suptitle("Phân tích F0 bằng phương pháp Cepstrum: {0}".format(file_path))
@@ -132,7 +148,6 @@ if __name__ == "__main__":
 
     plt.subplot(2, 1, 2)
     times = np.arange(len(f0s)) * (frame_step / fs)  # Thời gian của mỗi frame
-    f0s_non_zero = np.where(f0s == 0, np.nan, f0s)
     plt.scatter(times, f0s, c='black', s=2)
     plt.xticks(np.arange(0, times[-1], 1))
     plt.xlabel("Thời gian (giây)")
