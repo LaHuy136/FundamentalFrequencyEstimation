@@ -5,6 +5,7 @@ from scipy.signal.windows import hamming
 from scipy.signal import medfilt
 from scipy.signal import find_peaks
 import librosa
+import time
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
@@ -12,6 +13,7 @@ from utils.audio_helper import find_voice_index
 
 root_path = 'test_signals/'
 output_path = 'speech_processing/analysis/data/cepstrum_based_pitch_detection/'
+output_path_time = 'speech_processing/analysis/data/cepstrum_based_pitch_detection_time/'
 
 def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, threshold: int = 0.01) -> list:
     index_voices = find_voice_index(signal, frame_size, frame_step, threshold)
@@ -25,7 +27,7 @@ def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, thr
     segments.append((start, index_voices[-1]))
     return segments
 
-def calculate_f0(signal, fs, frame_size, frame_step, segments):
+def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048):
     """
     Hàm xác định tần số cơ bản (F0) cho từng đoạn có giọng nói sử dụng kỹ thuật Cepstrum.
     :param signal: Tín hiệu đầu vào (dạng mảng numpy)
@@ -58,7 +60,7 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments):
             windowed_frame = frame * hamming(len(frame))
             
             # 2. Chuyển đổi Fourier nhanh (FFT)
-            spectrum = fft(windowed_frame)
+            spectrum = fft(windowed_frame, N_FFT)
             
             # 3. Tính log phổ (Log Spectrum)
             log_spectrum = np.log(np.abs(spectrum) + np.finfo(float).eps)  # Thêm epsilon để tránh log(0)
@@ -67,7 +69,7 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments):
             cepstrum = np.real(ifft(log_spectrum))
             
             # 5. Tìm đỉnh cepstrum trong khoảng quefrency tương ứng với F0
-            quefrency_range = int(0.002 * fs), int(0.02 * fs)  # Khoảng 50 Hz đến 500 Hz
+            quefrency_range = int((1 / 400) * fs), int((1 / 60) * fs)  # Khoảng 60 Hz đến 400 Hz
             weighted_cepstrum = cepstrum[quefrency_range[0]:quefrency_range[1]] * np.linspace(1, 1, quefrency_range[1] - quefrency_range[0])
 
             # 6. Tìm đỉnh trong khoảng quefrency liên quan đến F0
@@ -81,7 +83,7 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments):
             f0s.append(f0)
 
     # 7. Áp dụng lọc trung vị (Median Filter) để làm mượt các giá trị F0
-    f0s = medfilt(f0s, kernel_size=5)  # Kích thước kernel có thể tùy chỉnh
+    # f0s = medfilt(f0s, kernel_size=3)  # Kích thước kernel có thể tùy chỉnh
 
     # Gán giá trị F0 là 0 cho các frame không có giọng nói
     num_frames = int(np.ceil(float(len(signal) - frame_size) / frame_step)) + 1
@@ -97,11 +99,22 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments):
     
     return f0s_full
 
+def analize_time_to_find_f0s(signal, fs, file_name: str, frame_size: int, frame_step: int, segments: list) -> None:
+    path = os.path.join(output_path_time, file_name.split(".")[0] + '.txt')
+    open(path, 'w').close()
+    for _ in range(0, 1000, 1):
+        start_time = time.time()
+        calculate_f0(signal, fs, frame_size, frame_step, segments)
+        # save time to file
+        with open(path, 'a') as f:
+            f.write(f"{time.time() - start_time}\n")
+
 if __name__ == "__main__":
     # Đọc tín hiệu từ file .wav
-    file_name = 'studio_female.wav'
+    file_name = 'MDU_RE_005.wav'
     file_path = os.path.join(root_path, file_name)
     threshold = 0.005
+    N_FFT = 2048
     signal, fs = librosa.load(file_path, sr=None)
     
     # Thiết lập kích thước frame và bước nhảy
@@ -111,14 +124,17 @@ if __name__ == "__main__":
 
     print(f"Tần số lấy mẫu: {fs} Hz")
     print(f"Số mẫu của tín hiệu: {len(signal)}")
-    print(f"Số lượng khung: {frame_length} frames")
-    print(f"Kích thước frame: {frame_size} mẫu")
-    print(f"Bước nhảy giữa các frame: {frame_step} mẫu")
+    print(f"N_FFT: {N_FFT}")
+    print(f"Số lượng khung (frame): {frame_length} frames")
+    print(f"Độ dài khung (frame): {frame_size} mẫu")
+    print(f"Độ dịch khung (frame): {frame_step} mẫu")
 
     # Tách các đoạn giọng nói
     segments = split_voice_segments(signal, frame_size, frame_step, threshold)
 
-    f0s = calculate_f0(signal, fs, frame_size, frame_step, segments)
+    f0s = calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT)
+
+    #analize_time_to_find_f0s(signal, fs, file_name, frame_size, frame_step, segments)
 
     # Lưu F0 vào file
     f0s_path = os.path.join(output_path, file_name.split(".")[0] + '.txt')
