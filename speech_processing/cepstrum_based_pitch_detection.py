@@ -107,7 +107,7 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, save_
     return f0s_full
 
 def save_time_to_find_f0(time_to_execute: float) -> None:
-    path = os.path.join(output_path_time, 'cepstral.txt')
+    path = os.path.join(output_path_time, 'cepstrum.txt')
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'a') as f:
