@@ -13,7 +13,7 @@ from utils.audio_helper import find_voice_index
 
 root_path = 'test_signals/'
 output_path = 'speech_processing/analysis/data/cepstrum_based_pitch_detection/'
-output_path_time = 'speech_processing/analysis/data/cepstrum_based_pitch_detection_time/'
+output_path_time = 'speech_processing/analysis/data/time_to_finding_f0/'
 
 def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, threshold: int = 0.01) -> list:
     index_voices = find_voice_index(signal, frame_size, frame_step, threshold)
@@ -27,7 +27,7 @@ def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, thr
     segments.append((start, index_voices[-1]))
     return segments
 
-def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048):
+def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, save_time_to_finding_f0: bool = False):
     """
     Hàm xác định tần số cơ bản (F0) cho từng đoạn có giọng nói sử dụng kỹ thuật Cepstrum.
     :param signal: Tín hiệu đầu vào (dạng mảng numpy)
@@ -38,6 +38,8 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048):
     :return: Danh sách F0 cho từng frame
     """
     f0s = []
+
+    start_time = time.time()
 
     for start, end in segments:
         # Xác định frame bắt đầu và kết thúc
@@ -82,6 +84,11 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048):
             f0 = fs / cepstrum_peak_index if cepstrum_peak_index != 0 else 0
             f0s.append(f0)
 
+    end_time = time.time()
+    time_to_execute = end_time - start_time
+    if save_time_to_finding_f0 == True:
+        save_time_to_find_f0(time_to_execute / len(f0s))
+
     # 7. Áp dụng lọc trung vị (Median Filter) để làm mượt các giá trị F0
     # f0s = medfilt(f0s, kernel_size=3)  # Kích thước kernel có thể tùy chỉnh
 
@@ -99,19 +106,20 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048):
     
     return f0s_full
 
-def analize_time_to_find_f0s(signal, fs, file_name: str, frame_size: int, frame_step: int, segments: list) -> None:
-    path = os.path.join(output_path_time, file_name.split(".")[0] + '.txt')
-    open(path, 'w').close()
-    for _ in range(0, 1000, 1):
-        start_time = time.time()
-        calculate_f0(signal, fs, frame_size, frame_step, segments)
-        # save time to file
-        with open(path, 'a') as f:
-            f.write(f"{time.time() - start_time}\n")
+def save_time_to_find_f0(time_to_execute: float) -> None:
+    path = os.path.join(output_path_time, 'cepstral.txt')
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'a') as f:
+        f.write(f"{time_to_execute}\n")
+
+def analize_time_to_find_f0s(signal, fs, frame_size: int, frame_step: int, segments: list, N_FFT: int = 2048) -> None:
+    for _ in range(0, 100, 1):
+        calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT, save_time_to_finding_f0=True)
 
 if __name__ == "__main__":
     # Đọc tín hiệu từ file .wav
-    file_name = 'MDU_RE_005.wav'
+    file_name = 'studio_male.wav'
     file_path = os.path.join(root_path, file_name)
     threshold = 0.005
     N_FFT = 2048
@@ -134,7 +142,7 @@ if __name__ == "__main__":
 
     f0s = calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT)
 
-    #analize_time_to_find_f0s(signal, fs, file_name, frame_size, frame_step, segments)
+    analize_time_to_find_f0s(signal, fs, frame_size, frame_step, segments, N_FFT)
 
     # Lưu F0 vào file
     f0s_path = os.path.join(output_path, file_name.split(".")[0] + '.txt')
