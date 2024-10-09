@@ -27,7 +27,7 @@ def split_voice_segments(signal: np.array, frame_size: int, frame_step: int, thr
     segments.append((start, index_voices[-1]))
     return segments
 
-def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, save_time_to_finding_f0: bool = False):
+def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, f0s_using_median_filter: bool = False, save_time_to_finding_f0: bool = False):
     """
     Hàm xác định tần số cơ bản (F0) cho từng đoạn có giọng nói sử dụng kỹ thuật Cepstrum.
     :param signal: Tín hiệu đầu vào (dạng mảng numpy)
@@ -78,7 +78,7 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, save_
             cepstrum_peak_index = np.argmax(weighted_cepstrum) + quefrency_range[0]
             peaks, _ = find_peaks(cepstrum[quefrency_range[0]:quefrency_range[1]], height=0.1, distance=10)
             if len(peaks) > 0:
-                cepstrum_peak_index = peaks[0] + quefrency_range[0]
+                cepstrum_peak_index = peaks[-1] + quefrency_range[0]
             else:
                 cepstrum_peak_index = 0
             f0 = fs / cepstrum_peak_index if cepstrum_peak_index != 0 else 0
@@ -90,7 +90,8 @@ def calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT=2048, save_
         save_time_to_find_f0(time_to_execute / len(f0s))
 
     # 7. Áp dụng lọc trung vị (Median Filter) để làm mượt các giá trị F0
-    # f0s = medfilt(f0s, kernel_size=3)  # Kích thước kernel có thể tùy chỉnh
+    if f0s_using_median_filter: 
+        f0s = medfilt(f0s, kernel_size=5)  # Kích thước kernel có thể tùy chỉnh
 
     # Gán giá trị F0 là 0 cho các frame không có giọng nói
     num_frames = int(np.ceil(float(len(signal) - frame_size) / frame_step)) + 1
@@ -142,19 +143,21 @@ if __name__ == "__main__":
 
     f0s = calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT)
 
-    analize_time_to_find_f0s(signal, fs, frame_size, frame_step, segments, N_FFT)
+    f0s_using_median_filter = calculate_f0(signal, fs, frame_size, frame_step, segments, N_FFT, f0s_using_median_filter=True)
+
+    # analize_time_to_find_f0s(signal, fs, frame_size, frame_step, segments, N_FFT)
 
     # Lưu F0 vào file
-    f0s_path = os.path.join(output_path, file_name.split(".")[0] + '.txt')
-    open(f0s_path, 'w').close()
-    for i, f0 in enumerate(f0s):
-        with open(f0s_path, 'a') as f:
-            f.write(f"{round(f0, 2)}\n")
+    # f0s_path = os.path.join(output_path, file_name.split(".")[0] + '.txt')
+    # open(f0s_path, 'w').close()
+    # for i, f0 in enumerate(f0s):
+    #     with open(f0s_path, 'a') as f:
+    #         f.write(f"{round(f0, 2)}\n")
 
     # Vẽ biểu đồ F0 theo thời gian (từng frame)
-    plt.figure( figsize=(14, 7))
+    plt.figure( figsize=(14, 11))
     plt.suptitle("Phân tích F0 bằng phương pháp Cepstrum: {0}".format(file_path))
-    plt.subplot(2, 1, 1)
+    plt.subplot(3, 1, 1)
     # plot signal and segments
     plt.plot(signal)
     for start, end in segments:
@@ -170,12 +173,20 @@ if __name__ == "__main__":
     # space between two subplots
     plt.subplots_adjust(hspace=1)
 
-    plt.subplot(2, 1, 2)
+    plt.subplot(3, 1, 2)
     times = np.arange(len(f0s)) * (frame_step / fs)  # Thời gian của mỗi frame
     plt.scatter(times, f0s, c='black', s=2)
     plt.xticks(np.arange(0, times[-1], 1))
     plt.xlabel("Thời gian (giây)")
     plt.ylabel("Tần số cơ bản F0 (Hz)")
     plt.title("Biểu đồ F0 theo thời gian")
+    plt.grid(True)
+
+    plt.subplot(3, 1, 3)
+    plt.scatter(times, f0s_using_median_filter, c='black', s=2)
+    plt.xticks(np.arange(0, times[-1], 1))
+    plt.xlabel("Thời gian (giây)")
+    plt.ylabel("Tần số cơ bản F0 (Hz)")
+    plt.title("Biểu đồ F0 theo thời gian (sử dụng Median Filter)")
     plt.grid(True)
     plt.show()
